@@ -1,39 +1,33 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import RedirectResponse  # <-- This is the new tool we imported
 from pydantic import BaseModel
-import uvicorn
 from agents import run_multi_agent_workflow
-import database
 
-# Initialize the db when the API starts
-try:
-    database.init_db()
-except Exception as e:
-    print(f"Failed to initialize db: {e}")
+# Initialize the API
+app = FastAPI(title="Multi-Agent Task System", description="API for Hack2Skill Submission")
 
-app = FastAPI(title="Multi-Agent Hackathon API")
-
-class TaskRequest(BaseModel):
+# Define what the incoming data should look like
+class PromptRequest(BaseModel):
     user_request: str
 
+# Create the Endpoint
+@app.post("/execute_task")
+async def execute_task(request: PromptRequest):
+    try:
+        # Pass the user's prompt into the custom workflow
+        agent_response = run_multi_agent_workflow(request.user_request)
+        
+        # Return the final result
+        return {
+            "status": "success", 
+            "original_message": request.user_request,
+            "agent_response": str(agent_response)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- THE MAGIC REDIRECT ---
 @app.get("/")
 async def root():
-    return {
-        "message": "Welcome to the Multi-Agent Hackathon API!", 
-        "hint": "Navigate to /docs to use the Swagger UI to test the endpoints."
-    }
-
-@app.post("/execute_task")
-async def execute_task(request: TaskRequest):
-    """
-    Endpoint catches the request, hands it to Primary Agent,
-    waits for them to finish, and returns the final answer.
-    """
-    result = run_multi_agent_workflow(request.user_request)
-    return {
-        "status": "success",
-        "original_message": request.user_request,
-        "agent_response": result
-    }
-
-if __name__ == "__main__":
-    print("Starting FastAPI Server... Use: uvicorn main:app --reload")
+    # This instantly teleports anyone who visits the base link directly to the /docs page!
+    return RedirectResponse(url="/docs")
